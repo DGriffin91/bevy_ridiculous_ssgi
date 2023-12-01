@@ -1,0 +1,4 @@
+/target
+/assets/large_models
+Cargo.lock
+*.exe

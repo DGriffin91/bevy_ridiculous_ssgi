@@ -1,0 +1,55 @@
+[package]
+name = "bevy_ridiculous_ssgi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = { version = "0.12", features = ["dds", "jpeg"] }
+# bevy_mod_taa for disocclusion pass.
+bevy_mod_taa = { git = "https://github.com/DGriffin91/bevy_mod_taa" }
+# Needed for InspectorOptions on SSGI related components
+# Note this causes a ICE on rust stable 1.74, for a workaround you can use nightly or beta instead.
+# https://github.com/jakobhellermann/bevy-inspector-egui/issues/153
+bevy-inspector-egui = "0.21"
+
+[dev-dependencies]
+bevy_basic_camera = { git = "https://github.com/DGriffin91/bevy_basic_camera" }
+
+[target.'cfg(not(all(target_arch = "wasm32", target_vendor = "unknown", target_os = "unknown", target_env = "")))'.dev-dependencies]
+bevy_mod_mipmap_generator = { git = "https://github.com/DGriffin91/bevy_mod_mipmap_generator" }
+
+# Enable only a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+debug-assertions = true
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
+debug-assertions = true
+
+[profile.test]
+opt-level = 3
+
+[features]
+default = ["webgl"]
+webgl = ["bevy/webgl2"]
+file_watcher = ["bevy/file_watcher"]
+
+[[example]]
+name = "bistro"
+path = "examples/large_examples/bistro.rs"
+
+[[example]]
+name = "hidden_alley"
+path = "examples/large_examples/hidden_alley.rs"
+
+[[example]]
+name = "top_down"
+path = "examples/large_examples/top_down.rs"
+
+[[example]]
+name = "san_miguel"
+path = "examples/large_examples/san_miguel.rs"
