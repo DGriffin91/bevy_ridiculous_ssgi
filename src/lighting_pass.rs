@@ -1,21 +1,22 @@
 use bevy::app::prelude::*;
 use bevy::asset::{load_internal_asset, Handle};
+use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::core_pipeline::{
-    clear_color::ClearColorConfig,
-    core_3d,
     deferred::{
         copy_lighting_id::DeferredLightingIdDepthTexture, DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT,
     },
-    prelude::{Camera3d, ClearColor},
     prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
     tonemapping::{DebandDither, Tonemapping},
 };
 use bevy::ecs::{prelude::*, query::QueryItem};
+use bevy::pbr::irradiance_volume::IrradianceVolume;
 use bevy::pbr::{
-    MeshPipeline, MeshPipelineKey, MeshViewBindGroup, ScreenSpaceAmbientOcclusionSettings,
-    ShadowFilteringMethod, ViewFogUniformOffset, ViewLightsUniformOffset,
+    MeshPipeline, MeshPipelineKey, MeshViewBindGroup, RenderViewLightProbes,
+    ScreenSpaceAmbientOcclusionSettings, ShadowFilteringMethod, ViewFogUniformOffset,
+    ViewLightProbesUniformOffset, ViewLightsUniformOffset,
 };
 use bevy::prelude::EnvironmentMapLight;
+use bevy::render::render_graph::RenderLabel;
 use bevy::render::texture::BevyDefault;
 use bevy::render::{
     extract_component::{
@@ -130,16 +131,16 @@ impl Plugin for CustomDeferredPbrLightingPlugin {
                 (prepare_deferred_lighting_pipelines.in_set(RenderSet::Prepare),),
             )
             .add_render_graph_node::<ViewNodeRunner<DeferredOpaquePass3dPbrLightingNode>>(
-                core_3d::graph::NAME,
-                DEFERRED_LIGHTING_PASS,
+                Core3d,
+                DeferredOpaquePass3dPbrLightingLabel,
             )
             .add_render_graph_edges(
-                core_3d::graph::NAME,
-                &[
-                    core_3d::graph::node::START_MAIN_PASS,
-                    DEFERRED_LIGHTING_PASS,
-                    core_3d::graph::node::MAIN_OPAQUE_PASS,
-                ],
+                Core3d,
+                (
+                    Node3d::StartMainPass,
+                    DeferredOpaquePass3dPbrLightingLabel,
+                    Node3d::MainOpaquePass,
+                ),
             );
     }
 
@@ -152,7 +153,8 @@ impl Plugin for CustomDeferredPbrLightingPlugin {
     }
 }
 
-pub const DEFERRED_LIGHTING_PASS: &str = "deferred_opaque_pbr_lighting_pass_3d";
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct DeferredOpaquePass3dPbrLightingLabel;
 #[derive(Default)]
 pub struct DeferredOpaquePass3dPbrLightingNode;
 
@@ -161,10 +163,10 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
         &'static ViewUniformOffset,
         &'static ViewLightsUniformOffset,
         &'static ViewFogUniformOffset,
+        &'static ViewLightProbesUniformOffset,
         &'static MeshViewBindGroup,
         &'static ViewTarget,
         &'static DeferredLightingIdDepthTexture,
-        &'static Camera3d,
         &'static DeferredLightingPipeline,
         &'static PrevFrameTexture,
         // todo webgl &'static DisocclusionTextures,
@@ -179,10 +181,10 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
             view_uniform_offset,
             view_lights_offset,
             view_fog_offset,
+            view_light_probes_offset,
             mesh_view_bind_group,
             target,
             deferred_lighting_id_depth_texture,
-            camera_3d,
             deferred_lighting_pipeline,
             prev_frame_tex,
             ssgi_resolve,
@@ -226,26 +228,30 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
             )),
         );
 
+        //Operations {
+        //    load: match camera_3d.clear_color {
+        //        ClearColorConfig::Default => {
+        //            LoadOp::Clear(world.resource::<ClearColor>().0.into())
+        //        }
+        //        ClearColorConfig::Custom(color) => LoadOp::Clear(color.into()),
+        //        ClearColorConfig::None => LoadOp::Load,
+        //    },
+        //    store: true,
+        //}
+
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
             label: Some("deferred_lighting_pass"),
-            color_attachments: &[Some(target.get_color_attachment(Operations {
-                load: match camera_3d.clear_color {
-                    ClearColorConfig::Default => {
-                        LoadOp::Clear(world.resource::<ClearColor>().0.into())
-                    }
-                    ClearColorConfig::Custom(color) => LoadOp::Clear(color.into()),
-                    ClearColorConfig::None => LoadOp::Load,
-                },
-                store: true,
-            }))],
+            color_attachments: &[Some(target.get_color_attachment())],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                 view: &deferred_lighting_id_depth_texture.texture.default_view,
                 depth_ops: Some(Operations {
                     load: LoadOp::Load,
-                    store: false,
+                    store: StoreOp::Discard,
                 }),
                 stencil_ops: None,
             }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
 
         render_pass.set_render_pipeline(pipeline);
@@ -256,6 +262,7 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
                 view_uniform_offset.offset,
                 view_lights_offset.offset,
                 view_fog_offset.offset,
+                **view_light_probes_offset,
             ],
         );
         render_pass.set_bind_group(1, &bind_group_1, &[]);
@@ -267,9 +274,9 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
 impl FromWorld for DeferredLightingLayout {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("deferred_lighting_layout"),
-            entries: &[
+        let layout = render_device.create_bind_group_layout(
+            Some("deferred_lighting_layout"),
+            &[
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::VERTEX_FRAGMENT,
@@ -287,7 +294,7 @@ impl FromWorld for DeferredLightingLayout {
                 ftexture_layout_entry(BLUE_NOISE_ENTRY_N, TextureViewDimension::D2Array), // Blue Noise
                 ftexture_layout_entry(12, TextureViewDimension::D2), // SSGI Resolve
             ],
-        });
+        );
         let mesh_pipeline = world.resource::<MeshPipeline>().clone();
 
         #[cfg(not(all(feature = "file_watcher")))]
@@ -472,7 +479,6 @@ pub fn prepare_deferred_lighting_pipelines(
             &ExtractedView,
             Option<&Tonemapping>,
             Option<&DebandDither>,
-            Option<&EnvironmentMapLight>,
             Option<&ShadowFilteringMethod>,
             Option<&ScreenSpaceAmbientOcclusionSettings>,
             (
@@ -480,20 +486,22 @@ pub fn prepare_deferred_lighting_pipelines(
                 Has<DepthPrepass>,
                 Has<MotionVectorPrepass>,
             ),
+            Has<RenderViewLightProbes<EnvironmentMapLight>>,
+            Has<RenderViewLightProbes<IrradianceVolume>>,
         ),
         With<DeferredPrepass>,
     >,
-    images: Res<RenderAssets<Image>>,
 ) {
     for (
         entity,
         view,
         tonemapping,
         dither,
-        environment_map,
         shadow_filter_method,
         ssao,
         (normal_prepass, depth_prepass, motion_vector_prepass),
+        has_environment_maps,
+        has_irradiance_volumes,
     ) in &views
     {
         let mut view_key = MeshPipelineKey::from_hdr(view.hdr);
@@ -540,12 +548,15 @@ pub fn prepare_deferred_lighting_pipelines(
             view_key |= MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION;
         }
 
-        let environment_map_loaded = match environment_map {
-            Some(environment_map) => environment_map.is_loaded(&images),
-            None => false,
-        };
-        if environment_map_loaded {
+        // We don't need to check to see whether the environment map is loaded
+        // because [`gather_light_probes`] already checked that for us before
+        // adding the [`RenderViewEnvironmentMaps`] component.
+        if has_environment_maps {
             view_key |= MeshPipelineKey::ENVIRONMENT_MAP;
+        }
+
+        if has_irradiance_volumes {
+            view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
         }
 
         match shadow_filter_method.unwrap_or(&ShadowFilteringMethod::default()) {

@@ -1,7 +1,7 @@
 use bevy::{
     core_pipeline::tonemapping::Tonemapping,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    input::{common_conditions::input_toggle_active, mouse::MouseMotion},
+    input::mouse::MouseMotion,
     math::vec3,
     pbr::{
         CascadeShadowConfigBuilder, DefaultOpaqueRendererMethod, PbrPlugin,
@@ -12,10 +12,9 @@ use bevy::{
     window::PresentMode,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
-use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_mipmap_generator::{MipmapGeneratorPlugin, MipmapGeneratorSettings};
 use bevy_mod_taa::{TAABundle, TAAPlugin};
-use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
+use bevy_ridiculous_ssgi::{SSGIBundle, SSGIPlugin};
 
 fn main() {
     App::new()
@@ -49,8 +48,8 @@ fn main() {
             SSGIPlugin,
             LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
-            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-                .run_if(input_toggle_active(false, KeyCode::Tab)),
+            //FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+            //    .run_if(input_toggle_active(false, KeyCode::Tab)),
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, (proc_scene, move_directional_light))
@@ -78,7 +77,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             )),
             directional_light: DirectionalLight {
                 color: Color::rgb_linear(1.0, 0.66, 0.51),
-                illuminance: 200000.0,
+                illuminance: 200000.0 * 0.2,
                 shadows_enabled: true,
                 shadow_depth_bias: 0.04,
                 shadow_normal_bias: 1.8,
@@ -211,10 +210,10 @@ pub fn proc_scene(
 fn move_directional_light(
     mut query: Query<&mut Transform, With<DirectionalLight>>,
     mut motion_evr: EventReader<MouseMotion>,
-    keys: Res<Input<KeyCode>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut e_rot: Local<Vec3>,
 ) {
-    if !keys.pressed(KeyCode::L) {
+    if !keys.pressed(KeyCode::KeyL) {
         return;
     }
     for mut trans in &mut query {

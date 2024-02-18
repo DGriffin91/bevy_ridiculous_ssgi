@@ -1,19 +1,23 @@
+use crate::bind_group_utils::linear_sampler;
 use bevy::{
     asset::load_internal_asset,
-    core_pipeline::{core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state},
+    core_pipeline::{
+        core_3d::graph::{Core3d, Node3d},
+        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+    },
     prelude::*,
     render::{
         camera::ExtractedCamera,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
-        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
-            BindGroupEntries, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-            BindingType, CachedRenderPipelineId, ColorTargetState, ColorWrites, Extent3d,
-            FragmentState, MultisampleState, Operations, PipelineCache, PrimitiveState,
-            RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-            RenderPipelineDescriptor, Sampler, SamplerBindingType, ShaderStages, TextureAspect,
-            TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
-            TextureView, TextureViewDescriptor, TextureViewDimension,
+            BindGroupEntries, BindGroupLayout, BindGroupLayoutEntry, BindingType,
+            CachedRenderPipelineId, ColorTargetState, ColorWrites, Extent3d, FragmentState,
+            MultisampleState, Operations, PipelineCache, PrimitiveState, RenderPassColorAttachment,
+            RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler,
+            SamplerBindingType, ShaderStages, TextureAspect, TextureDescriptor, TextureDimension,
+            TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
+            TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
         texture::{CachedTexture, TextureCache},
@@ -21,8 +25,6 @@ use bevy::{
         Render, RenderApp, RenderSet,
     },
 };
-
-use crate::bind_group_utils::linear_sampler;
 
 const DOWNSAMPLE_COLOR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
@@ -36,25 +38,9 @@ impl Default for CopyFrame {
         CopyFrame { mip_levels: 5 }
     }
 }
-pub struct CopyFramePlugin {
-    node_order: Vec<&'static str>,
-}
-
-/// Makes a copy of the render target with multiple mip levels
-impl Default for CopyFramePlugin {
-    fn default() -> Self {
-        CopyFramePlugin {
-            node_order: [
-                core_3d::graph::node::MAIN_OPAQUE_PASS,
-                FrameCopyNode::NAME,
-                core_3d::graph::node::END_MAIN_PASS,
-            ]
-            .to_vec(),
-        }
-    }
-}
 
 const SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(23059847523049077);
+pub struct CopyFramePlugin;
 impl Plugin for CopyFramePlugin {
     fn build(&self, app: &mut App) {
         load_internal_asset!(app, SHADER_HANDLE, "copy_frame.wgsl", Shader::from_wgsl);
@@ -65,8 +51,11 @@ impl Plugin for CopyFramePlugin {
 
         render_app
             .add_systems(Render, prepare_textures.in_set(RenderSet::PrepareResources))
-            .add_render_graph_node::<FrameCopyNode>(core_3d::graph::NAME, FrameCopyNode::NAME)
-            .add_render_graph_edges(core_3d::graph::NAME, &self.node_order);
+            .add_render_graph_node::<FrameCopyNode>(Core3d, FrameCopyLabel)
+            .add_render_graph_edges(
+                Core3d,
+                (Node3d::MainOpaquePass, FrameCopyLabel, Node3d::EndMainPass),
+            );
     }
 
     fn finish(&self, app: &mut App) {
@@ -77,6 +66,9 @@ impl Plugin for CopyFramePlugin {
         render_app.init_resource::<CopyFramePipeline>();
     }
 }
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct FrameCopyLabel;
 
 pub struct FrameCopyNode {
     query: QueryState<
@@ -276,6 +268,8 @@ fn run_pass(
             ops: Operations::default(),
         })],
         depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
     });
     render_pass.set_render_pipeline(pipeline);
     render_pass.set_bind_group(0, &bind_group, &[]);
@@ -311,13 +305,9 @@ impl FromWorld for CopyFramePipeline {
             },
         ];
 
-        let layout =
-            world
-                .resource::<RenderDevice>()
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("copy_frame_bind_group_layout"),
-                    entries: &entries,
-                });
+        let layout = world
+            .resource::<RenderDevice>()
+            .create_bind_group_layout(Some("copy_frame_bind_group_layout"), &entries);
 
         let sampler = linear_sampler(render_device);
 

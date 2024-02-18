@@ -1,14 +1,12 @@
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    input::common_conditions::input_toggle_active,
     math::vec3,
     pbr::{DefaultOpaqueRendererMethod, PbrPlugin},
     prelude::*,
-    render::view::ColorGrading,
+    render::{camera::Exposure, view::ColorGrading},
     window::PresentMode,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
-use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_taa::{TAABundle, TAAPlugin};
 use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
 
@@ -39,8 +37,8 @@ fn main() {
             SSGIPlugin,
             LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
-            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-                .run_if(input_toggle_active(false, KeyCode::Tab)),
+            //FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+            //    .run_if(input_toggle_active(false, KeyCode::Tab)),
         ))
         .add_systems(Startup, setup)
         .run();
@@ -66,6 +64,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     exposure: 0.0,
                     ..default()
                 },
+                exposure: Exposure { ev100: 0.0 },
                 ..default()
             },
             CameraController {

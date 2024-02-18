@@ -231,7 +231,7 @@ fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
     let prev_sh2 = xyz8e5_to_vec3_(prev_sh.z);
     let prev_sh3 = xyz8e5_to_vec3_(prev_sh.w);
     
-    let reprojection_fail = f32(any(history_uv <= 0.0) || any(history_uv >= 1.0));
+    let reprojection_fail = f32(any(history_uv <= vec2(0.0)) || any(history_uv >= vec2(1.0)));
 
     let hysteresis = mix(config.hysteresis, saturate(config.hysteresis + 0.4), reprojection_fail);
 

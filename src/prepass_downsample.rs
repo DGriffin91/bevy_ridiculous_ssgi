@@ -2,18 +2,19 @@ use bevy::{
     asset::load_internal_asset,
     core::FrameCount,
     core_pipeline::{
-        core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+        core_3d::graph::{Core3d, Node3d},
+        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
         prepass::ViewPrepassTextures,
     },
     prelude::*,
     render::{
         camera::ExtractedCamera,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
-        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
-            BindGroupEntries, BindGroupLayout, BindGroupLayoutDescriptor, CachedRenderPipelineId,
-            ColorTargetState, ColorWrites, Extent3d, FragmentState, MultisampleState, Operations,
-            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+            BindGroupEntries, BindGroupLayout, CachedRenderPipelineId, ColorTargetState,
+            ColorWrites, Extent3d, FragmentState, MultisampleState, Operations, PipelineCache,
+            PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
             RenderPipelineDescriptor, Sampler, TextureAspect, TextureDescriptor, TextureDimension,
             TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
         },
@@ -48,22 +49,7 @@ impl Default for PrepassDownsample {
 }
 
 /// Makes a copies of the prepass normals, depth, and motion vectors with mips.
-pub struct PrepassDownsamplePlugin {
-    node_order: Vec<&'static str>,
-}
-
-impl Default for PrepassDownsamplePlugin {
-    fn default() -> Self {
-        PrepassDownsamplePlugin {
-            node_order: [
-                core_3d::graph::node::END_PREPASSES,
-                DownsampleNode::NAME,
-                core_3d::graph::node::START_MAIN_PASS,
-            ]
-            .to_vec(),
-        }
-    }
-}
+pub struct PrepassDownsamplePlugin;
 
 const CONVERT_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(163429348570394285);
 const DOWNSAMPLE_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(329046523092834572);
@@ -88,8 +74,11 @@ impl Plugin for PrepassDownsamplePlugin {
 
         render_app
             .add_systems(Render, prepare_textures.in_set(RenderSet::PrepareResources))
-            .add_render_graph_node::<DownsampleNode>(core_3d::graph::NAME, DownsampleNode::NAME)
-            .add_render_graph_edges(core_3d::graph::NAME, &self.node_order);
+            .add_render_graph_node::<DownsampleNode>(Core3d, DownsampleLabel)
+            .add_render_graph_edges(
+                Core3d,
+                (Node3d::EndPrepasses, DownsampleLabel, Node3d::StartMainPass),
+            );
     }
 
     fn finish(&self, app: &mut App) {
@@ -100,6 +89,9 @@ impl Plugin for PrepassDownsamplePlugin {
         render_app.init_resource::<PrepassDownsamplePipeline>();
     }
 }
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct DownsampleLabel;
 
 pub struct DownsampleNode {
     query: QueryState<
@@ -171,11 +163,14 @@ impl Node for DownsampleNode {
 
         let deferred_binding = prepass_textures.deferred.as_ref().unwrap();
         let depth_binding = prepass_textures.depth.as_ref().unwrap();
-        let depth_view = depth_binding.texture.create_view(&TextureViewDescriptor {
-            label: Some("prepass_depth"),
-            aspect: TextureAspect::DepthOnly,
-            ..default()
-        });
+        let depth_view = depth_binding
+            .texture
+            .texture
+            .create_view(&TextureViewDescriptor {
+                label: Some("prepass_depth"),
+                aspect: TextureAspect::DepthOnly,
+                ..default()
+            });
 
         let motion_bindings = prepass_textures.motion_vectors.as_ref().unwrap();
         let mip_levels = prepass_downsample.mip_levels as u32;
@@ -231,10 +226,10 @@ impl Node for DownsampleNode {
                 &BindGroupEntries::with_indices((
                     (0, view_binding(world)),
                     (9, globals_binding(world)),
-                    (101, &deferred_binding.default_view),
+                    (101, &deferred_binding.texture.default_view),
                     // todo webgl (102, &normal_binding.default_view),
                     (103, &depth_view),
-                    (104, &motion_bindings.default_view),
+                    (104, &motion_bindings.texture.default_view),
                 )),
             );
             let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
@@ -257,6 +252,8 @@ impl Node for DownsampleNode {
                     }),
                 ],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             render_pass.set_render_pipeline(convert_pipeline);
             render_pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
@@ -442,6 +439,8 @@ impl Node for DownsampleNode {
                     }),
                 ],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             render_pass.set_render_pipeline(downsample_pipeline);
             render_pass.set_bind_group(0, &bind_group, &[]);
@@ -496,13 +495,9 @@ impl FromWorld for PrepassDownsamplePipeline {
             ftexture_layout_entry(104, TextureViewDimension::D2),
         ];
 
-        let convert_layout =
-            world
-                .resource::<RenderDevice>()
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("copy_frame_bind_group_layout"),
-                    entries: &entries,
-                });
+        let convert_layout = world
+            .resource::<RenderDevice>()
+            .create_bind_group_layout(Some("copy_frame_bind_group_layout"), &entries);
 
         #[allow(unused_mut)]
         let mut shader_defs = Vec::new();
@@ -554,13 +549,9 @@ impl FromWorld for PrepassDownsamplePipeline {
             fsampler_layout_entry(5),
         ];
 
-        let downsample_layout =
-            world
-                .resource::<RenderDevice>()
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("copy_frame_bind_group_layout"),
-                    entries: &entries,
-                });
+        let downsample_layout = world
+            .resource::<RenderDevice>()
+            .create_bind_group_layout(Some("copy_frame_bind_group_layout"), &entries);
 
         let downsample_pipeline_id =
             world

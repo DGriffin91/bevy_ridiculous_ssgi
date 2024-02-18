@@ -1,8 +1,8 @@
 use bevy::app::prelude::*;
 use bevy::asset::{load_internal_asset, Handle};
+use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
 
-use bevy::core_pipeline::core_3d;
 use bevy::core_pipeline::fullscreen_vertex_shader::fullscreen_shader_vertex_state;
 use bevy::ecs::query::QueryItem;
 use bevy::prelude::Image;
@@ -10,6 +10,7 @@ use bevy::reflect::Reflect;
 use bevy::render::camera::ExtractedCamera;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy::render::render_asset::RenderAssets;
+use bevy::render::render_graph::RenderLabel;
 use bevy::render::texture::{CachedTexture, TextureCache};
 use bevy::render::{
     render_graph::{NodeRunError, RenderGraphContext, ViewNode, ViewNodeRunner},
@@ -20,7 +21,6 @@ use bevy::render::{
 };
 
 use bevy::render::{render_graph::RenderGraphApp, render_resource::*, RenderApp};
-use bevy_inspector_egui::InspectorOptions;
 
 use crate::bind_group_utils::{
     fsampler_layout_entry, ftexture_layout_entry, globals_binding, globals_layout_entry,
@@ -28,21 +28,20 @@ use crate::bind_group_utils::{
     view_binding, view_layout_entry,
 };
 use crate::copy_frame::PrevFrameTexture;
-use crate::prepass_downsample::{DownsampleNode, PrepassDownsampleTextures};
+use crate::prepass_downsample::{DownsampleLabel, PrepassDownsampleTextures};
 use crate::{image, resource, shader_def_uint, BlueNoise, BLUE_NOISE_DIMS, BLUE_NOISE_ENTRY_N};
-use bevy_inspector_egui::prelude::ReflectInspectorOptions;
 
-#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
-#[reflect(Component, InspectorOptions)]
+#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
+#[reflect(Component)]
 pub struct SSGIPass {
     /// Proportion of the render target resolution. Should be a multiple of 2, [2..=16], 2 is quite slow
-    #[inspector(min = 2, max = 32)]
+    //#[inspector(min = 2, max = 32)]
     pub render_scale: u32,
     /// Must be a square multiple of 4
-    #[inspector(min = 4, max = 32)]
+    //#[inspector(min = 4, max = 32)]
     pub cascade_0_directions: u32,
     /// [2..=6]
-    #[inspector(min = 2, max = 8)]
+    //#[inspector(min = 2, max = 8)]
     pub cascade_count: u32,
     pub jitter_probe_position: bool,
     pub jitter_probe_direction: bool,
@@ -51,51 +50,51 @@ pub struct SSGIPass {
     /// If too low noise from aliasing will be visible when things are moving.
     pub noise_frame_period: u32,
     /// How much differences in depth affect interpolation between probes when combining cascades
-    #[inspector(min = 0.0)]
+    //#[inspector(min = 0.0)]
     pub distance_rejection: f32,
     /// How much differences in normals affect interpolation between probes when combining cascades
-    #[inspector(min = 0.0)]
+    //#[inspector(min = 0.0)]
     pub normal_rejection: f32,
     /// Controls the amount of light distance falloff. 0.0 to disable falloff
     pub falloff: f32,
     pub square_falloff: bool,
     /// SSGI Brightness
-    #[inspector(min = 0.0, max = 100.0)]
+    //#[inspector(min = 0.0, max = 100.0)]
     pub brightness: f32,
     /// Non-PBR rough specular with simple fresnel
-    #[inspector(min = 0.0, max = 100.0)]
+    //#[inspector(min = 0.0, max = 100.0)]
     pub rough_specular: f32,
     /// Non-PBR rough specular fresnel sharpness
-    #[inspector(min = 0.1, max = 100.0)]
+    //#[inspector(min = 0.1, max = 100.0)]
     pub rough_specular_sharpness: f32,
     /// How much light we accept from things pointing away from our position
     /// Allows us to still sample the color even if we hit something from the backside
     /// This is needed for top down where only the tops of things are visible
     /// 2.0 is needed for steep top down
-    #[inspector(min = -2.0, max = 2.0)]
+    //#[inspector(min = -2.0, max = 2.0)]
     pub backside_illumination: f32,
     /// Minimum mip to use for depth samples
-    #[inspector(min = 0.0, max = 5.0)]
+    //#[inspector(min = 0.0, max = 5.0)]
     pub depth_mip_min: f32,
     /// Minimum mip to use for normal, motion vector, color, samples
-    #[inspector(min = 0.0, max = 5.0)]
+    //#[inspector(min = 0.0, max = 5.0)]
     pub mip_min: f32,
     /// Maximum mip to use for normal, motion vector, color, samples
     /// Max is used for ray march steps further away from the ray origin
-    #[inspector(min = 0.0, max = 5.0)]
+    //#[inspector(min = 0.0, max = 5.0)]
     pub mip_max: f32,
-    #[inspector(min = 0.0, max = 1.0)]
+    //#[inspector(min = 0.0, max = 1.0)]
     /// How much cascade intervals overlap.
     pub interval_overlap: f32,
     /// Min distance each interval travels, the distance is screen space,
     /// but the unit only applies for cascade 0, higher cascades scale up non-linearly
-    #[inspector(min = 1.0, max = 1000.0)]
+    //#[inspector(min = 1.0, max = 1000.0)]
     pub cascade_0_dist: f32,
     // If this is false defined there will **less** ray march steps and it will be faster
     // but there can be more light leaking / inconsistencies
     pub divide_steps_by_square_of_cascade_exp: bool,
     // How much the raw horizon occlusion is used. Leave at 0.0 for bitmask occlusion;
-    #[inspector(min = 0.0, max = 100.0)]
+    //#[inspector(min = 0.0, max = 100.0)]
     pub horizon_occlusion: f32,
 }
 
@@ -212,17 +211,9 @@ impl Plugin for SSGISamplePlugin {
             .init_resource::<SpecializedRenderPipelines<SSGILayout>>()
             .add_systems(Render, (prepare_pipelines.in_set(RenderSet::Prepare),))
             .add_render_graph_node::<ViewNodeRunner<SSGIOpaquePass3dPbrLightingNode>>(
-                core_3d::graph::NAME,
-                SSGI_PASS,
+                Core3d, SSGILabel,
             )
-            .add_render_graph_edges(
-                core_3d::graph::NAME,
-                &[
-                    DownsampleNode::NAME,
-                    SSGI_PASS,
-                    core_3d::graph::node::START_MAIN_PASS,
-                ],
-            );
+            .add_render_graph_edges(Core3d, (DownsampleLabel, SSGILabel, Node3d::StartMainPass));
     }
 
     fn finish(&self, app: &mut App) {
@@ -234,7 +225,9 @@ impl Plugin for SSGISamplePlugin {
     }
 }
 
-pub const SSGI_PASS: &str = "ssgi_pass_3d";
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct SSGILabel;
+
 #[derive(Default)]
 pub struct SSGIOpaquePass3dPbrLightingNode;
 
@@ -388,6 +381,8 @@ fn run_pass(
         label: Some(pass_name),
         color_attachments: &attachments,
         depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
     });
 
     render_pass.set_render_pipeline(pipeline);
@@ -398,9 +393,9 @@ fn run_pass(
 impl FromWorld for SSGILayout {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("ssgi_lighting_layout"),
-            entries: &[
+        let layout = render_device.create_bind_group_layout(
+            Some("ssgi_lighting_layout"),
+            &[
                 view_layout_entry(0),
                 globals_layout_entry(9),
                 ftexture_layout_entry(101, TextureViewDimension::D2), // Prev frame
@@ -415,7 +410,7 @@ impl FromWorld for SSGILayout {
                 utexture_layout_entry(110, TextureViewDimension::D2), // Higher Cascade Data Texture 1
                 utexture_layout_entry(111, TextureViewDimension::D2), // Higher Cascade Data Texture 2
             ],
-        });
+        );
 
         #[cfg(not(all(feature = "file_watcher")))]
         let shader = SHADER_HANDLE;

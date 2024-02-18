@@ -6,13 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.12", features = ["dds", "jpeg"] }
+bevy = { version = "0.13", features = ["dds", "jpeg"] }
 # bevy_mod_taa for disocclusion pass.
 bevy_mod_taa = { git = "https://github.com/DGriffin91/bevy_mod_taa" }
 # Needed for InspectorOptions on SSGI related components
-# Note this causes a ICE on rust stable 1.74, for a workaround you can use nightly or beta instead.
-# https://github.com/jakobhellermann/bevy-inspector-egui/issues/153
-bevy-inspector-egui = "0.21"
+# Temporarily removed while waiting on bevy-inspector-egui to update
+# bevy-inspector-egui = "0.21"
 
 [dev-dependencies]
 bevy_basic_camera = { git = "https://github.com/DGriffin91/bevy_basic_camera" }

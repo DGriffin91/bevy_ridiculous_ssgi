@@ -69,7 +69,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let closest_motion_vector = textureLoad(prepass_downsample_motion, ifrag_coord, 0).xy;
     let history_frag_coord = vec2<i32>((in.uv - closest_motion_vector) * view.viewport.zw);
     let history_uv = in.uv - closest_motion_vector;
-    let reprojection_fail = any(history_uv <= 0.0) || any(history_uv >= 1.0); //TODO webgl max( , saturate(two_of_three * 3.0))
+    let reprojection_fail = any(history_uv <= vec2(0.0)) || any(history_uv >= vec2(1.0)); //TODO webgl max( , saturate(two_of_three * 3.0))
 
     out = vec4(read_cascade_radiance(world_position, N, frag_coord, select(history_uv, in.uv.xy, reprojection_fail)), 1.0);
     

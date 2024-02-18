@@ -1,17 +1,20 @@
 use bevy::{
     asset::load_internal_asset,
     core::FrameCount,
-    core_pipeline::{core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state},
+    core_pipeline::{
+        core_3d::graph::{Core3d, Node3d},
+        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+    },
     prelude::*,
     render::{
         camera::ExtractedCamera,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
-        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
-            BindGroupEntries, BindGroupLayout, BindGroupLayoutDescriptor, CachedRenderPipelineId,
-            ColorTargetState, ColorWrites, Extent3d, FragmentState, MultisampleState, Operations,
-            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+            BindGroupEntries, BindGroupLayout, CachedRenderPipelineId, ColorTargetState,
+            ColorWrites, Extent3d, FragmentState, MultisampleState, Operations, PipelineCache,
+            PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
             RenderPipelineDescriptor, ShaderDefVal, ShaderType, SpecializedRenderPipeline,
             SpecializedRenderPipelines, TextureDescriptor, TextureDimension, TextureFormat,
             TextureUsages, TextureViewDimension,
@@ -22,7 +25,6 @@ use bevy::{
         Render, RenderApp, RenderSet,
     },
 };
-use bevy_inspector_egui::{inspector_options::ReflectInspectorOptions, InspectorOptions};
 
 use crate::{
     bind_group_utils::{
@@ -32,7 +34,7 @@ use crate::{
     image,
     prepass_downsample::PrepassDownsampleTextures,
     resource, shader_def_uint,
-    ssgi::{SSGIPass, SSGIPipelineKey, SSGITextures, SSGI_PASS},
+    ssgi::{SSGILabel, SSGIPass, SSGIPipelineKey, SSGITextures},
     BlueNoise, BLUE_NOISE_DIMS, BLUE_NOISE_ENTRY_N,
 };
 
@@ -40,12 +42,12 @@ const SH_DATA_FORMAT: TextureFormat = TextureFormat::Rgba32Uint;
 const SH_HISTORY_POS_FORMAT: TextureFormat = TextureFormat::Rgba32Float;
 pub const SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(40958237405983745);
 
-#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
-#[reflect(Component, InspectorOptions)]
+#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
+#[reflect(Component)] //InspectorOptions
 pub struct SSGIGenerateSH {
     /// How much to blend in previous reprojected probes. 1.0 for only using the current frame,
     /// lower numbers uses more of the previous accumulation
-    #[inspector(min = 0.05, max = 1.0)]
+    // #[inspector(min = 0.05, max = 1.0)]
     hysteresis: f32,
 }
 
@@ -87,17 +89,10 @@ impl Plugin for SSGIGenerateSHPlugin {
             .add_systems(Render, prepare_textures.in_set(RenderSet::PrepareResources))
             .init_resource::<SpecializedRenderPipelines<SSGIGenerateSHLayout>>()
             .add_systems(Render, (prepare_pipelines.in_set(RenderSet::Prepare),))
-            .add_render_graph_node::<SSGIGenerateSHNode>(
-                core_3d::graph::NAME,
-                SSGIGenerateSHNode::NAME,
-            )
+            .add_render_graph_node::<SSGIGenerateSHNode>(Core3d, SSGIGenerateSHLabel)
             .add_render_graph_edges(
-                core_3d::graph::NAME,
-                &[
-                    SSGI_PASS,
-                    SSGIGenerateSHNode::NAME,
-                    core_3d::graph::node::START_MAIN_PASS,
-                ],
+                Core3d,
+                (SSGILabel, SSGIGenerateSHLabel, Node3d::StartMainPass),
             );
     }
 
@@ -109,6 +104,9 @@ impl Plugin for SSGIGenerateSHPlugin {
         render_app.init_resource::<SSGIGenerateSHLayout>();
     }
 }
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct SSGIGenerateSHLabel;
 
 pub struct SSGIGenerateSHNode {
     query: QueryState<
@@ -216,6 +214,8 @@ impl Node for SSGIGenerateSHNode {
                 }),
             ],
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
         render_pass.set_render_pipeline(pipeline);
         render_pass.set_bind_group(0, &bind_group, &[view_uniform_offset.offset]);
@@ -252,13 +252,9 @@ impl FromWorld for SSGIGenerateSHLayout {
             ftexture_layout_entry(BLUE_NOISE_ENTRY_N, TextureViewDimension::D2Array), // Blue Noise
         ];
 
-        let layout =
-            world
-                .resource::<RenderDevice>()
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("ssgi_generate_sh_bind_group_layout"),
-                    entries: &entries,
-                });
+        let layout = world
+            .resource::<RenderDevice>()
+            .create_bind_group_layout(Some("ssgi_generate_sh_bind_group_layout"), &entries);
 
         #[cfg(not(all(feature = "file_watcher")))]
         let shader = SHADER_HANDLE;

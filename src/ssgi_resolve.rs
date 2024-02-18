@@ -1,17 +1,20 @@
 use bevy::{
     asset::load_internal_asset,
     core::FrameCount,
-    core_pipeline::{core_3d, fullscreen_vertex_shader::fullscreen_shader_vertex_state},
+    core_pipeline::{
+        core_3d::graph::{Core3d, Node3d},
+        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+    },
     prelude::*,
     render::{
         camera::ExtractedCamera,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
-        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext},
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
-            BindGroupEntries, BindGroupLayout, BindGroupLayoutDescriptor, CachedRenderPipelineId,
-            ColorTargetState, ColorWrites, Extent3d, FragmentState, MultisampleState, Operations,
-            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+            BindGroupEntries, BindGroupLayout, CachedRenderPipelineId, ColorTargetState,
+            ColorWrites, Extent3d, FragmentState, MultisampleState, Operations, PipelineCache,
+            PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
             RenderPipelineDescriptor, ShaderDefVal, ShaderType, SpecializedRenderPipeline,
             SpecializedRenderPipelines, TextureDescriptor, TextureDimension, TextureFormat,
             TextureUsages, TextureViewDimension,
@@ -22,7 +25,6 @@ use bevy::{
         Render, RenderApp, RenderSet,
     },
 };
-use bevy_inspector_egui::{inspector_options::ReflectInspectorOptions, InspectorOptions};
 
 use crate::{
     bind_group_utils::{
@@ -34,7 +36,7 @@ use crate::{
     prepass_downsample::PrepassDownsampleTextures,
     resource, shader_def_uint,
     ssgi::{SSGIPass, SSGIPipelineKey, SSGITextures},
-    ssgi_generate_sh::{SSGIGenerateSHNode, SSGISHTextures},
+    ssgi_generate_sh::{SSGIGenerateSHLabel, SSGISHTextures},
     BlueNoise, BLUE_NOISE_DIMS, BLUE_NOISE_ENTRY_N,
 };
 
@@ -42,18 +44,18 @@ const SH_RESOLVE_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
 pub const SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(523704598327409748);
 
-#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
-#[reflect(Component, InspectorOptions)]
+#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
+#[reflect(Component)] //InspectorOptions
 pub struct SSGIResolve {
     /// How much differences in position affect interpolation between probes when resolving to full resolution
-    #[inspector(min = 0.0)]
+    // #[inspector(min = 0.0)]
     pub distance_rejection: f32,
     /// How much differences in normals affect interpolation between probes when resolving to full resolution
-    #[inspector(min = 0.0)]
+    // #[inspector(min = 0.0)]
     pub normal_rejection: f32,
     /// How much to blend in previous reprojected resolved frame. 1.0 for only using the current frame,
     /// lower numbers uses more of the previous accumulation
-    #[inspector(min = 0.05, max = 1.0)]
+    // #[inspector(min = 0.05, max = 1.0)]
     hysteresis: f32,
 }
 
@@ -102,15 +104,11 @@ impl Plugin for SSGIResolvePlugin {
         render_app
             .add_systems(Render, prepare_textures.in_set(RenderSet::PrepareResources))
             .init_resource::<SpecializedRenderPipelines<SSGIResolveLayout>>()
-            .add_render_graph_node::<SSGIResolveNode>(core_3d::graph::NAME, SSGIResolveNode::NAME)
+            .add_render_graph_node::<SSGIResolveNode>(Core3d, SSGIResolveLabel)
             .add_systems(Render, (prepare_pipelines.in_set(RenderSet::Prepare),))
             .add_render_graph_edges(
-                core_3d::graph::NAME,
-                &[
-                    SSGIGenerateSHNode::NAME,
-                    SSGIResolveNode::NAME,
-                    core_3d::graph::node::START_MAIN_PASS,
-                ],
+                Core3d,
+                (SSGIGenerateSHLabel, SSGIResolveLabel, Node3d::StartMainPass),
             );
     }
 
@@ -122,6 +120,9 @@ impl Plugin for SSGIResolvePlugin {
         render_app.init_resource::<SSGIResolveLayout>();
     }
 }
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct SSGIResolveLabel;
 
 pub struct SSGIResolveNode {
     query: QueryState<
@@ -245,6 +246,8 @@ impl Node for SSGIResolveNode {
                 ops: Operations::default(),
             })],
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
         render_pass.set_render_pipeline(pipeline);
         render_pass.set_bind_group(
@@ -309,13 +312,9 @@ impl FromWorld for SSGIResolveLayout {
             asset_server.load("shaders/ssgi_resolve.wgsl")
         };
 
-        let layout =
-            world
-                .resource::<RenderDevice>()
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("ssgi_resolve_bind_group_layout"),
-                    entries: &entries,
-                });
+        let layout = world
+            .resource::<RenderDevice>()
+            .create_bind_group_layout(Some("ssgi_resolve_bind_group_layout"), &entries);
 
         Self { layout, shader }
     }

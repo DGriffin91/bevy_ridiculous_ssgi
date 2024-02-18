@@ -1,7 +1,7 @@
 use bevy::{
     core_pipeline::bloom::BloomSettings,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    input::{common_conditions::input_toggle_active, mouse::MouseMotion},
+    input::mouse::MouseMotion,
     math::vec3,
     pbr::{
         CascadeShadowConfigBuilder, DefaultOpaqueRendererMethod, PbrPlugin,
@@ -11,7 +11,6 @@ use bevy::{
     render::view::ColorGrading,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
-use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_taa::{TAABundle, TAAPlugin};
 use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
 
@@ -35,8 +34,8 @@ pub fn main() {
             CameraControllerPlugin,
             TAAPlugin,
             SSGIPlugin,
-            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-                .run_if(input_toggle_active(false, KeyCode::Tab)),
+            //FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+            //    .run_if(input_toggle_active(false, KeyCode::Tab)),
         ))
         // Mipmap generation be skipped if ktx2 is used
         .add_systems(Update, (proc_scene, move_directional_light))
@@ -74,7 +73,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             )),
             directional_light: DirectionalLight {
                 color: Color::rgb_linear(0.95, 0.69268, 0.537758),
-                illuminance: 3000000.0,
+                illuminance: 3000000.0 * 0.2,
                 shadows_enabled: true,
                 shadow_depth_bias: 0.04,
                 shadow_normal_bias: 1.8,
@@ -125,6 +124,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             EnvironmentMapLight {
                 diffuse_map: asset_server.load("environment_maps/pisa_diffuse_rgb9e5_zstd.ktx2"),
                 specular_map: asset_server.load("environment_maps/pisa_specular_rgb9e5_zstd.ktx2"),
+                intensity: 1000.0,
             },
             CameraController {
                 walk_speed: 2.0,
@@ -206,10 +206,10 @@ pub fn proc_scene(
 fn move_directional_light(
     mut query: Query<&mut Transform, With<DirectionalLight>>,
     mut motion_evr: EventReader<MouseMotion>,
-    keys: Res<Input<KeyCode>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut e_rot: Local<Vec3>,
 ) {
-    if !keys.pressed(KeyCode::L) {
+    if !keys.pressed(KeyCode::KeyL) {
         return;
     }
     for mut trans in &mut query {

@@ -12,6 +12,7 @@ use bevy::{
     prelude::*,
     render::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
+        render_asset::RenderAssetUsages,
         texture::{CompressedImageFormats, ImageType},
     },
 };
@@ -51,8 +52,8 @@ impl Plugin for SSGIPlugin {
             .add_plugins((
                 ExtractResourcePlugin::<BlueNoise>::default(),
                 CustomDeferredPbrLightingPlugin,
-                CopyFramePlugin::default(),
-                PrepassDownsamplePlugin::default(),
+                CopyFramePlugin,
+                PrepassDownsamplePlugin,
                 SSGISamplePlugin,
                 SSGIGenerateSHPlugin,
                 SSGIResolvePlugin,
@@ -116,11 +117,13 @@ fn setup_blue_noise_image(bytes: &[u8], image_type: ImageType) -> Image {
         },
     );
     Image::from_buffer(
+        String::from("Blue Noise"),
         bytes,
         image_type,
         CompressedImageFormats::NONE,
         false,
         image_sampler,
+        RenderAssetUsages::default(),
     )
     .unwrap()
 }
