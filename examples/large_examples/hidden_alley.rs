@@ -1,3 +1,4 @@
+use bevy::input::common_conditions::input_toggle_active;
 use bevy::{
     core_pipeline::bloom::BloomSettings,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -11,6 +12,7 @@ use bevy::{
     render::view::ColorGrading,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
+use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_taa::{TAABundle, TAAPlugin};
 use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
 
@@ -34,8 +36,8 @@ pub fn main() {
             CameraControllerPlugin,
             TAAPlugin,
             SSGIPlugin,
-            //FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-            //    .run_if(input_toggle_active(false, KeyCode::Tab)),
+            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+                .run_if(input_toggle_active(false, KeyCode::Tab)),
         ))
         // Mipmap generation be skipped if ktx2 is used
         .add_systems(Update, (proc_scene, move_directional_light))

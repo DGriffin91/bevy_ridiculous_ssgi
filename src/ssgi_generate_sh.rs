@@ -26,6 +26,8 @@ use bevy::{
     },
 };
 
+use bevy_inspector_egui::{inspector_options::ReflectInspectorOptions, InspectorOptions};
+
 use crate::{
     bind_group_utils::{
         ftexture_layout_entry, globals_binding, globals_layout_entry, uniform_buffer,
@@ -42,12 +44,12 @@ const SH_DATA_FORMAT: TextureFormat = TextureFormat::Rgba32Uint;
 const SH_HISTORY_POS_FORMAT: TextureFormat = TextureFormat::Rgba32Float;
 pub const SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(40958237405983745);
 
-#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
-#[reflect(Component)] //InspectorOptions
+#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
+#[reflect(Component, InspectorOptions)]
 pub struct SSGIGenerateSH {
     /// How much to blend in previous reprojected probes. 1.0 for only using the current frame,
     /// lower numbers uses more of the previous accumulation
-    // #[inspector(min = 0.05, max = 1.0)]
+    #[inspector(min = 0.05, max = 1.0)]
     hysteresis: f32,
 }
 

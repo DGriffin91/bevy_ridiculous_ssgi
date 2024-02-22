@@ -20,6 +20,8 @@ use bevy::render::{
     Render, RenderSet,
 };
 
+use bevy_inspector_egui::{inspector_options::ReflectInspectorOptions, InspectorOptions};
+
 use bevy::render::{render_graph::RenderGraphApp, render_resource::*, RenderApp};
 
 use crate::bind_group_utils::{
@@ -31,17 +33,17 @@ use crate::copy_frame::PrevFrameTexture;
 use crate::prepass_downsample::{DownsampleLabel, PrepassDownsampleTextures};
 use crate::{image, resource, shader_def_uint, BlueNoise, BLUE_NOISE_DIMS, BLUE_NOISE_ENTRY_N};
 
-#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
-#[reflect(Component)]
+#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
+#[reflect(Component, InspectorOptions)]
 pub struct SSGIPass {
     /// Proportion of the render target resolution. Should be a multiple of 2, [2..=16], 2 is quite slow
-    //#[inspector(min = 2, max = 32)]
+    #[inspector(min = 2, max = 32)]
     pub render_scale: u32,
     /// Must be a square multiple of 4
-    //#[inspector(min = 4, max = 32)]
+    #[inspector(min = 4, max = 32)]
     pub cascade_0_directions: u32,
     /// [2..=6]
-    //#[inspector(min = 2, max = 8)]
+    #[inspector(min = 2, max = 8)]
     pub cascade_count: u32,
     pub jitter_probe_position: bool,
     pub jitter_probe_direction: bool,
@@ -50,51 +52,51 @@ pub struct SSGIPass {
     /// If too low noise from aliasing will be visible when things are moving.
     pub noise_frame_period: u32,
     /// How much differences in depth affect interpolation between probes when combining cascades
-    //#[inspector(min = 0.0)]
+    #[inspector(min = 0.0)]
     pub distance_rejection: f32,
     /// How much differences in normals affect interpolation between probes when combining cascades
-    //#[inspector(min = 0.0)]
+    #[inspector(min = 0.0)]
     pub normal_rejection: f32,
     /// Controls the amount of light distance falloff. 0.0 to disable falloff
     pub falloff: f32,
     pub square_falloff: bool,
     /// SSGI Brightness
-    //#[inspector(min = 0.0, max = 100.0)]
+    #[inspector(min = 0.0, max = 100.0)]
     pub brightness: f32,
     /// Non-PBR rough specular with simple fresnel
-    //#[inspector(min = 0.0, max = 100.0)]
+    #[inspector(min = 0.0, max = 100.0)]
     pub rough_specular: f32,
     /// Non-PBR rough specular fresnel sharpness
-    //#[inspector(min = 0.1, max = 100.0)]
+    #[inspector(min = 0.1, max = 100.0)]
     pub rough_specular_sharpness: f32,
     /// How much light we accept from things pointing away from our position
     /// Allows us to still sample the color even if we hit something from the backside
     /// This is needed for top down where only the tops of things are visible
     /// 2.0 is needed for steep top down
-    //#[inspector(min = -2.0, max = 2.0)]
+    #[inspector(min = -2.0, max = 2.0)]
     pub backside_illumination: f32,
     /// Minimum mip to use for depth samples
-    //#[inspector(min = 0.0, max = 5.0)]
+    #[inspector(min = 0.0, max = 5.0)]
     pub depth_mip_min: f32,
     /// Minimum mip to use for normal, motion vector, color, samples
-    //#[inspector(min = 0.0, max = 5.0)]
+    #[inspector(min = 0.0, max = 5.0)]
     pub mip_min: f32,
     /// Maximum mip to use for normal, motion vector, color, samples
     /// Max is used for ray march steps further away from the ray origin
-    //#[inspector(min = 0.0, max = 5.0)]
+    #[inspector(min = 0.0, max = 5.0)]
     pub mip_max: f32,
-    //#[inspector(min = 0.0, max = 1.0)]
+    #[inspector(min = 0.0, max = 1.0)]
     /// How much cascade intervals overlap.
     pub interval_overlap: f32,
     /// Min distance each interval travels, the distance is screen space,
     /// but the unit only applies for cascade 0, higher cascades scale up non-linearly
-    //#[inspector(min = 1.0, max = 1000.0)]
+    #[inspector(min = 1.0, max = 1000.0)]
     pub cascade_0_dist: f32,
     // If this is false defined there will **less** ray march steps and it will be faster
     // but there can be more light leaking / inconsistencies
     pub divide_steps_by_square_of_cascade_exp: bool,
     // How much the raw horizon occlusion is used. Leave at 0.0 for bitmask occlusion;
-    //#[inspector(min = 0.0, max = 100.0)]
+    #[inspector(min = 0.0, max = 100.0)]
     pub horizon_occlusion: f32,
 }
 

@@ -1,3 +1,4 @@
+use bevy::input::common_conditions::input_toggle_active;
 use bevy::{
     core_pipeline::tonemapping::Tonemapping,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -12,9 +13,10 @@ use bevy::{
     window::PresentMode,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
+use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_mipmap_generator::{MipmapGeneratorPlugin, MipmapGeneratorSettings};
 use bevy_mod_taa::{TAABundle, TAAPlugin};
-use bevy_ridiculous_ssgi::{SSGIBundle, SSGIPlugin};
+use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
 
 fn main() {
     App::new()
@@ -48,8 +50,8 @@ fn main() {
             SSGIPlugin,
             LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
-            //FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-            //    .run_if(input_toggle_active(false, KeyCode::Tab)),
+            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+                .run_if(input_toggle_active(false, KeyCode::Tab)),
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, (proc_scene, move_directional_light))

@@ -1,4 +1,5 @@
 use bevy::ecs::prelude::*;
+use bevy::input::common_conditions::input_toggle_active;
 use bevy::render::camera::Exposure;
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -8,8 +9,9 @@ use bevy::{
     window::PresentMode,
 };
 use bevy_basic_camera::{CameraController, CameraControllerPlugin};
+use bevy_inspector_egui::quick::FilterQueryInspectorPlugin;
 use bevy_mod_taa::{TAABundle, TAAPlugin};
-use bevy_ridiculous_ssgi::{SSGIBundle, SSGIPlugin};
+use bevy_ridiculous_ssgi::{ssgi::SSGIPass, SSGIBundle, SSGIPlugin};
 
 fn main() {
     App::new()
@@ -39,10 +41,10 @@ fn main() {
             LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
         ))
-        //.add_plugins(
-        //    FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
-        //        .run_if(input_toggle_active(false, KeyCode::Tab)),
-        //)
+        .add_plugins(
+            FilterQueryInspectorPlugin::<With<SSGIPass>>::default()
+                .run_if(input_toggle_active(false, KeyCode::Tab)),
+        )
         .add_systems(Startup, setup)
         .run();
 }

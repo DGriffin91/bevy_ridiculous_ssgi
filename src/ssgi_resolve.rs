@@ -26,6 +26,8 @@ use bevy::{
     },
 };
 
+use bevy_inspector_egui::{inspector_options::ReflectInspectorOptions, InspectorOptions};
+
 use crate::{
     bind_group_utils::{
         fsampler_layout_entry, ftexture_layout_entry, globals_binding, globals_layout_entry,
@@ -44,18 +46,18 @@ const SH_RESOLVE_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
 pub const SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(523704598327409748);
 
-#[derive(Component, ExtractComponent, Clone, Reflect)] //InspectorOptions
-#[reflect(Component)] //InspectorOptions
+#[derive(Component, ExtractComponent, Clone, Reflect, InspectorOptions)]
+#[reflect(Component, InspectorOptions)]
 pub struct SSGIResolve {
     /// How much differences in position affect interpolation between probes when resolving to full resolution
-    // #[inspector(min = 0.0)]
+    #[inspector(min = 0.0)]
     pub distance_rejection: f32,
     /// How much differences in normals affect interpolation between probes when resolving to full resolution
-    // #[inspector(min = 0.0)]
+    #[inspector(min = 0.0)]
     pub normal_rejection: f32,
     /// How much to blend in previous reprojected resolved frame. 1.0 for only using the current frame,
     /// lower numbers uses more of the previous accumulation
-    // #[inspector(min = 0.05, max = 1.0)]
+    #[inspector(min = 0.05, max = 1.0)]
     hysteresis: f32,
 }
 

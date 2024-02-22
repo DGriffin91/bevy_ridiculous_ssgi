@@ -10,8 +10,7 @@ bevy = { version = "0.13", features = ["dds", "jpeg"] }
 # bevy_mod_taa for disocclusion pass.
 bevy_mod_taa = { git = "https://github.com/DGriffin91/bevy_mod_taa" }
 # Needed for InspectorOptions on SSGI related components
-# Temporarily removed while waiting on bevy-inspector-egui to update
-# bevy-inspector-egui = "0.21"
+bevy-inspector-egui = "0.23"
 
 [dev-dependencies]
 bevy_basic_camera = { git = "https://github.com/DGriffin91/bevy_basic_camera" }
