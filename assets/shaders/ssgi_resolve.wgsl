@@ -257,47 +257,64 @@ fn read_cascade_radiance(world_position: vec3<f32>, N: vec3<f32>, frag_coord: ve
     return clamp(out, vec3(0.0), vec3(10000.0));
 }
 
-// 5-sample Catmull-Rom filtering
-// Catmull-Rom filtering: https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1
-// Ignoring corners: https://www.activision.com/cdn/research/Dynamic_Temporal_Antialiasing_and_Upsampling_in_Call_of_Duty_v4.pdf#page=68
-// Technically we should renormalize the weights since we're skipping the corners, but it's basically the same result
+// https://github.com/google/filament/blob/v1.49.1/filament/src/materials/antiAliasing/taa.mat#L147
+// Samples a texture with Catmull-Rom filtering, using 9 texture fetches instead of 16.
+//      https://therealmjp.github.io/
+// Some optimizations from here:
+//      http://vec3.ca/bicubic-filtering-in-fewer-taps/ for more details
+// Optimized to 5 taps by removing the corner samples
 fn texture_sample_bicubic_catmull_rom(tex: texture_2d<f32>, tex_sampler: sampler, uv: vec2<f32>, texture_size: vec2<f32>) -> vec4<f32> {
-    let texel_size = 1.0 / texture_size;
-    let sample_position = uv * texture_size;
-    let tex_pos1 = floor(sample_position - 0.5) + 0.5;
-    let f = sample_position - tex_pos1;
+    // We're going to sample a a 4x4 grid of texels surrounding the target UV coordinate. We'll do this by rounding
+    // down the sample location to get the exact center of our "starting" texel. The starting texel will be at
+    // location [1, 1] in the grid, where [0, 0] is the top left corner.
 
-    let w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
-    let w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
-    let w2 = f * (0.5 + f * (2.0 - 1.5 * f));
-    let w3 = f * f * (-0.5 + 0.5 * f);
+    let sample_pos = uv * texture_size;
+    let tex_pos1 = floor(sample_pos - 0.5) + 0.5;
+
+    // Compute the fractional offset from our starting texel to our original sample location, which we'll
+    // feed into the Catmull-Rom spline function to get our filter weights.
+    let f = sample_pos - tex_pos1;
+    let f2 = f * f;
+    let f3 = f2 * f;
+
+    // Compute the Catmull-Rom weights using the fractional offset that we calculated earlier.
+    // These equations are pre-expanded based on our knowledge of where the texels will be located,
+    // which lets us avoid having to evaluate a piece-wise function.
+    let w0 = f2 - 0.5 * (f3 + f);
+    let w1 = 1.5 * f3 - 2.5 * f2 + 1.0;
+    let w3 = 0.5 * (f3 - f2);
+    let w2 = 1.0 - w0 - w1 - w3;
 
     // Work out weighting factors and sampling offsets that will let us use bilinear filtering to
     // simultaneously evaluate the middle 2 samples from the 4x4 grid.
-    var w12 = w1 + w2;
-    var offset12 = w2 / (w1 + w2);
+    let w12 = w1 + w2;
 
     // Compute the final UV coordinates we'll use for sampling the texture
     var tex_pos0 = tex_pos1 - 1.0;
     var tex_pos3 = tex_pos1 + 2.0;
-    var tex_pos12 = tex_pos1 + offset12;
+    var tex_pos12 = tex_pos1 + w2 / w12;
 
-    tex_pos0 /= texture_size;
-    tex_pos3 /= texture_size;
-    tex_pos12 /= texture_size;
+    let inv_texture_size = 1.0 / texture_size;
+    tex_pos0  *= inv_texture_size;
+    tex_pos3  *= inv_texture_size;
+    tex_pos12 *= inv_texture_size;
 
-    var result = vec4(0.0);
-    //result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos0.x, tex_pos0.y), 0.0) * w0.x * w0.y;
-    result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos0.y), 0.0) * w12.x * w0.y;
-    //result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos3.x, tex_pos0.y), 0.0) * w3.x * w0.y;
+    let k0 = w12.x * w0.y;
+    let k1 = w0.x  * w12.y;
+    let k2 = w12.x * w12.y;
+    let k3 = w3.x  * w12.y;
+    let k4 = w12.x * w3.y;
 
-    result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos0.x, tex_pos12.y), 0.0) * w0.x * w12.y;
-    result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos12.y), 0.0) * w12.x * w12.y;
-    result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos3.x, tex_pos12.y), 0.0) * w3.x * w12.y;
+    var result =    textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos0.y),  0.0) * k0
+                  + textureSampleLevel(tex, tex_sampler, vec2(tex_pos0.x,  tex_pos12.y), 0.0) * k1
+                  + textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos12.y), 0.0) * k2
+                  + textureSampleLevel(tex, tex_sampler, vec2(tex_pos3.x,  tex_pos12.y), 0.0) * k3
+                  + textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos3.y),  0.0) * k4;
 
-    //result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos0.x, tex_pos3.y), 0.0) * w0.x * w3.y;
-    result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos12.x, tex_pos3.y), 0.0) * w12.x * w3.y;
-    //result += textureSampleLevel(tex, tex_sampler, vec2(tex_pos3.x, tex_pos3.y), 0.0) * w3.x * w3.y;
+    result *= 1.0 / (k0 + k1 + k2 + k3 + k4);
+
+    // we could end-up with negative values
+    result = max(vec4(0.0), result);
 
     return result;
 }
